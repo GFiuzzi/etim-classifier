@@ -22,6 +22,8 @@ const Home: React.FC = () => {
   const [dataSource, setDataSource] = useState<'local' | 'dataset' | 'api'>('local')
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
+  const [etimConfig, setEtimConfig] = useState<any>(null)
+  const [configLoading, setConfigLoading] = useState(true)
 
   useEffect(() => {
     let interval: NodeJS.Timeout
@@ -34,6 +36,25 @@ const Home: React.FC = () => {
     }
     return () => clearInterval(interval)
   }, [autoRefresh, refreshInterval, searchTerm])
+
+  useEffect(() => {
+    // Load ETIM API configuration
+    const loadConfig = async () => {
+      try {
+        const response = await fetch('/api/etim/config')
+        const data = await response.json()
+        if (data.success) {
+          setEtimConfig(data.data)
+        }
+      } catch (error) {
+        console.error('Failed to load ETIM config:', error)
+      } finally {
+        setConfigLoading(false)
+      }
+    }
+
+    loadConfig()
+  }, [])
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) return
@@ -163,6 +184,32 @@ const Home: React.FC = () => {
                   ))}
                 </div>
               </div>
+
+              {/* ETIM API Configuration Status */}
+              {!configLoading && etimConfig && (
+                <div className="mb-4 p-3 rounded-lg border ${
+                  etimConfig.status === 'ready' 
+                    ? 'bg-green-50 border-green-200 text-green-800' 
+                    : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                }">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      etimConfig.status === 'ready' ? 'bg-green-500' : 'bg-yellow-500'
+                    }`}></div>
+                    <span className="text-sm font-medium">
+                      {etimConfig.status === 'ready' 
+                        ? 'ETIM International API configurata' 
+                        : 'ETIM International API non configurata'
+                      }
+                    </span>
+                  </div>
+                  {etimConfig.status !== 'ready' && (
+                    <p className="text-xs mt-1 text-gray-600">
+                      Per abilitare l'integrazione, modifica il file .env con le tue credenziali ETIM
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Auto Refresh */}
               <div className="flex items-center gap-4 mb-4">

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { etimAPIService } from '../services/etim-api.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -36,7 +37,7 @@ const mockETIMData = {
 // Search endpoint
 router.get('/search', async (req, res) => {
   try {
-    const { q, source = 'local' } = req.query
+    const { q, source = 'local', language = 'EN', version = '8.0' } = req.query
     
     if (!q || typeof q !== 'string') {
       return res.status(400).json({
@@ -48,13 +49,35 @@ router.get('/search', async (req, res) => {
     const searchTerm = q.toLowerCase()
     const dataSource = source as keyof typeof mockETIMData
     
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500))
-    
     let results: Array<{code: string, description: string, version: string, source: 'local' | 'dataset' | 'api'}> = []
     
-    // Search in specified data source
-    if (mockETIMData[dataSource]) {
+    try {
+      // Try ETIM International API first if source is 'api' or if no results from local/dataset
+      if (dataSource === 'api' || (dataSource !== 'local' && results.length === 0)) {
+        if (etimAPIService.config.clientId && etimAPIService.config.clientSecret) {
+          const apiResults = await etimAPIService.searchClassifications(searchTerm, {
+            language: language as string,
+            version: version as string,
+            limit: 50
+          })
+          
+          // Transform API results to match our format
+          if (apiResults && apiResults.data) {
+            results = apiResults.data.map((item: any) => ({
+              code: item.code || item.etimCode,
+              description: item.description || item.shortDescription,
+              version: version as string,
+              source: 'api' as const
+            }))
+          }
+        }
+      }
+    } catch (apiError) {
+      console.warn('ETIM API search failed, falling back to mock data:', apiError)
+    }
+    
+    // If no API results or API is not configured, use mock data
+    if (results.length === 0 && mockETIMData[dataSource]) {
       results = mockETIMData[dataSource].filter(item =>
         item.code.toLowerCase().includes(searchTerm) ||
         item.description.toLowerCase().includes(searchTerm)
@@ -72,13 +95,39 @@ router.get('/search', async (req, res) => {
     res.json({
       success: true,
       data: results,
-      source: dataSource,
+      source: results.length > 0 && results[0].source === 'api' ? 'api' : dataSource,
       query: searchTerm,
       timestamp: new Date().toISOString()
     })
 
   } catch (error) {
     console.error('Search error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    })
+  }
+})
+
+// ETIM API Configuration endpoint
+router.get('/config', async (req, res) => {
+  try {
+    const config = {
+      authUrl: process.env.ETIM_AUTH_URL || 'https://etimauth.etim-international.com',
+      baseUrl: process.env.ETIM_BASE_URL || 'https://etimapi.etim-international.com',
+      scope: process.env.ETIM_SCOPE || 'EtimApi',
+      clientId: process.env.ETIM_CLIENT_ID ? 'configured' : 'not_configured',
+      clientSecret: process.env.ETIM_CLIENT_SECRET ? 'configured' : 'not_configured',
+      status: process.env.ETIM_CLIENT_ID && process.env.ETIM_CLIENT_SECRET ? 'ready' : 'needs_configuration'
+    }
+
+    res.json({
+      success: true,
+      data: config,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('Config error:', error)
     res.status(500).json({
       success: false,
       message: 'Internal server error'
