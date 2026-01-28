@@ -1,0 +1,26 @@
+[Unit]
+Description=ETIM Classifier Application
+After=network.target
+
+[Service]
+Type=simple
+User=etim-classifier
+Group=etim-classifier
+WorkingDirectory=/var/www/etim-classifier
+ExecStart=/usr/bin/node dist/api/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+Environment=PORT=3001
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/www/etim-classifier/logs
+ReadWritePaths=/var/www/etim-classifier/data
+
+[Install]
+WantedBy=multi-user.target
